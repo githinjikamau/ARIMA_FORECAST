@@ -1,0 +1,275 @@
+---
+title: "CYTONN"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r packages}
+pack <- c("tidyverse","forecast","DBI","RMySQL","lubridate","scales")
+
+pload <- function(packages){
+  for (i in packages){
+    if( !require(i, character.only = T) ){
+      install.packages(i, dependencies = T)
+    }
+  require(i, character.only = T)  
+  }
+}
+
+suppressPackageStartupMessages(pload(packages = pack) )
+# declutter workspace
+rm(pack,pload)
+```
+
+```{r databaseConnection}
+mysqlconnection = dbConnect(MySQL(), user = 'root', password = 'Notts7450', dbname = 'CYTONN', host = '127.0.0.1', port = 3306)
+
+```
+
+```{r}
+dbListTables(mysqlconnection)
+```
+
+```{r}
+resultProd <-  dbSendQuery(mysqlconnection, "select * from products")
+```
+
+```{r}
+products <- fetch(resultProd, n = 5)
+products
+```
+
+```{r}
+dbClearResult(resultProd)
+```
+
+```{r}
+resultSales <- dbSendQuery(mysqlconnection, "select * from sales")
+```
+
+
+```{r }
+sales <- fetch(resultSales, n = 5)
+dbClearResult(resultSales)
+sales
+```
+```{r Ginger}
+dbDisconnect(mysqlconnection)
+mysqlconnection = dbConnect(MySQL(), user = 'root', password = 'Notts7450', dbname = 'CYTONN', host = '127.0.0.1', port = 3306)
+gingerQuery <- mysqlconnection %>%  dbSendQuery("select * from cytonn.sales where product_id = 10")
+ginger <- fetch(gingerQuery, n=-1)
+```
+
+```{r eval=FALSE}
+date1 <- as.Date(ginger$created_at)
+date2 <- as.Date(ginger$updated_at)
+diff <- date1 - date2
+```
+
+
+```{r eval=FALSE}
+ginger <- ginger %>% arrange(created_at)
+```
+
+
+```{r eval=FALSE}
+difftime(ginger$created_at, lag(ginger$created_at))
+ginger$lagtime <- lag(ginger$created_at)
+ginger$answer <- difftime(ginger$created_at, lag(ginger$created_at))
+```
+
+```{r eval=FALSE}
+getIDs <- ginger[ginger$answer == 0,]
+```
+Make time series regular. Use daily frequency.
+
+```{r}
+ginger$year <- (year(ginger$created_at)) 
+#ginger$year <- arrange(ginger$year)
+ginger$month <- month(ginger$created_at, abbr = F,label = T)
+ginger$day <- wday(ginger$created_at, label = T,abbr = F)
+ginger$week <- week(ginger$created_at)
+```
+
+```{r}
+gingerSum <- ginger %>% group_by(year,month,day) %>% summarise(Tally=sum(quantity))
+
+```
+
+
+```{r}
+ggplot(gingerSum, aes(x=day, y= Tally)) +
+  geom_bar(stat = "identity")
+```
+
+```{r eval=FALSE}
+gingerSum2 <- ginger %>% group_by(created_at) %>% summarise(Tally=sum(quantity))
+```
+
+```{r eval=FALSE}
+# graph not looking good
+# Where did i place gingerSum2?
+ginger$created_at <- as.Date(ginger$created_at)
+ggplot(ginger, aes(x=created_at, y= quantity)) +
+  geom_line()
+```
+
+```{r}
+# Set week2 to 0 so that i may counts the weeks properly starting 2010 as base
+ginger$week2 <- 0
+# Subset into yearly tables
+ginger10 <- ginger[ginger$year==2010,]
+ginger11 <- ginger[ginger$year==2011,]
+ginger12 <- ginger[ginger$year==2012,]
+# Calculate weeks starting from 2010 as base
+ginger10$week2 <- ginger10$week 
+ginger11$week2 <- ginger11$week +52
+ginger12$week2 <- ginger12$week + 52*2
+```
+
+```{r}
+# Collate the yearly tables
+gingerNew <- rbind(ginger10,ginger11,ginger12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(quantity))
+rm(ginger10,ginger11,ginger12)
+```
+Plot of sales by week.
+```{r eval=FALSE}
+ggplot(gingerNew, aes(x=week2,y=sales)) +
+  geom_point() +
+  labs(title = "Weekly Sales from April 2010 to 2011", x = "Week", y = "Sales") +
+  scale_y_continuous(labels= comma) +
+  theme_minimal()
+```
+Remove the outlier. The last data point. Or better perform outlier detection using more advanced methods.
+Google weekly time series.
+
+```{r}
+gingerTs <- ts(data = gingerNew[,-1], start = c(2010,4), frequency = 52)
+#(gingerTs)
+```
+
+```{r eval=FALSE}
+# Got this from stackoverflow. Uses decimal date.
+ts(data = gingerNew, start = decimal_date(ymd("2010-04-30")), frequency = 52)
+```
+
+```{r}
+fit<- auto.arima(gingerTs)
+summary(fit)
+```
+
+```{r}
+fcast<-forecast(fit,h=20)
+summary(fcast)
+```
+
+## VARMA
+When estimating a VARMA it is important that all the variables are of the same order of integration. They should also be of the same frequency. 
+Why would one use this approach? Because it would enable one to investigate inter-relationships between the variables.  
+Picking of pdq for a VARMA. Should it be the same for all the series? Can one have different pdq for each of the k-variables.  
+With larger k is there a problem with over parameterization?  
+Plots may not be particularly innovative but for forecasting extra information may be contained in the pooled information leading to better forecasts.  
+
+## Next product is
+
+```{r passion}
+passionQuery <- mysqlconnection %>%  dbSendQuery("select * from cytonn.sales where product_id = 11")
+passion <- fetch(passionQuery, n=-1)
+dbClearResult(passionQuery)
+```
+
+```{r}
+passion$year <- (year(passion$created_at)) 
+#passion$year <- arrange(passion$year)
+passion$month <- month(passion$created_at, abbr = F,label = T)
+passion$day <- wday(passion$created_at, label = T,abbr = F)
+passion$week <- week(passion$created_at)
+```
+### The Automation Process Begins!
+
+```{r}
+# Create a function to automate getting the dataframes
+product_ids <- seq.int(from = 10, to = 25)
+#namesDF <- dbGetQuery(mysqlconnection,paste0("select distinct name from cytonn.combined order by combined.product_id") )
+#namesDF$name <- paste0("'",namesDF$name,"'")
+
+# Loop to get vales from the database
+for (i in product_ids){
+assign(paste0("a",i), value = dbGetQuery(mysqlconnection, paste0("select * from cytonn.combined where product_id =",i) ))  
+}
+
+get_SplitDates <- function(product) {
+  # require(lubridate) # is required for below functions to work
+  product$created_at <- ymd_hms(product$created_at)
+  product$year <- year(product$created_at)
+  product$month <- month(product$created_at, abbr = F, label = T)
+  product$day <- wday(product$created_at, abbr = F,label = T)
+  product$week <- week(product$created_at)
+  return(product)
+}
+```
+
+
+```{r eval=FALSE}
+for (i in namesDF$name){
+assign(i, value = dbGetQuery(mysqlconnection, paste0("select * from cytonn.combined where combined.name =",i) ))  
+}
+```
+
+```{r}
+for (i in product_ids)
+  assign(paste0("a",i), value = get_SplitDates())
+```
+
+
+```{r Fun get_weeks}
+get_weeks <- function(product) {
+  if (isTRUE( all.equal(unique(product$year), c(2010,2011,2012) ) )){
+    # Set week2 to 0 so that i may count the weeks properly starting 2010 as base
+product$week2 <- 0
+# Subset into yearly tables
+product10 <- product[product$year==2010,]
+product11 <- product[product$year==2011,]
+product12 <- product[product$year==2012,]
+# Calculate weeks starting from 2010 as base
+product10$week2 <- product10$week 
+product11$week2 <- product11$week +52
+product12$week2 <- product12$week + 52*2
+# collate into a single dataframe
+assign(paste0(product,"New"), value = rbind(ginger10,ginger11,ginger12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(quantity)) )
+# clean/declutter workspace
+rm(product10,product11,product12)
+  } else{
+    return(print("Warning: Probably Has Less or More years than expected"))
+  }
+}
+
+```
+
+Before running below check that productNew exists
+
+```{r ScatterPlots}
+plot_product <- function(productNew) {
+  ggplot(productNew, aes(x=week2,y=sales)) +
+  geom_point() +
+  labs(title = "Weekly Sales from April 2010 to 2011", x = "Week", y = "Sales") +
+  scale_y_continuous(labels= comma) +
+  theme_minimal()
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
