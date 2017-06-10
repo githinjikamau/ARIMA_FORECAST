@@ -8,7 +8,7 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
 ```{r packages}
-pack <- c("tidyverse","forecast","DBI","RMySQL","lubridate","scales")
+pack <- c("tidyverse","forecast","DBI","RMySQL","lubridate","scales","grid","gridExtra")
 
 pload <- function(packages){
   for (i in packages){
@@ -33,30 +33,7 @@ mysqlconnection = dbConnect(MySQL(), user = 'root', password = 'Notts7450', dbna
 dbListTables(mysqlconnection)
 ```
 
-```{r}
-resultProd <-  dbSendQuery(mysqlconnection, "select * from products")
-```
-
-```{r}
-products <- fetch(resultProd, n = 5)
-products
-```
-
-```{r}
-dbClearResult(resultProd)
-```
-
-```{r}
-resultSales <- dbSendQuery(mysqlconnection, "select * from sales")
-```
-
-
-```{r }
-sales <- fetch(resultSales, n = 5)
-dbClearResult(resultSales)
-sales
-```
-```{r Ginger}
+```{r Ginger, eval=FALSE}
 dbDisconnect(mysqlconnection)
 mysqlconnection = dbConnect(MySQL(), user = 'root', password = 'Notts7450', dbname = 'CYTONN', host = '127.0.0.1', port = 3306)
 gingerQuery <- mysqlconnection %>%  dbSendQuery("select * from cytonn.sales where product_id = 10")
@@ -71,22 +48,14 @@ diff <- date1 - date2
 
 
 ```{r eval=FALSE}
-ginger <- ginger %>% arrange(created_at)
-```
-
-
-```{r eval=FALSE}
 difftime(ginger$created_at, lag(ginger$created_at))
 ginger$lagtime <- lag(ginger$created_at)
 ginger$answer <- difftime(ginger$created_at, lag(ginger$created_at))
 ```
 
-```{r eval=FALSE}
-getIDs <- ginger[ginger$answer == 0,]
-```
-Make time series regular. Use daily frequency.
+Make time series regular. Use daily/weekly frequency.
 
-```{r}
+```{r eval=FALSE}
 ginger$year <- (year(ginger$created_at)) 
 #ginger$year <- arrange(ginger$year)
 ginger$month <- month(ginger$created_at, abbr = F,label = T)
@@ -94,15 +63,9 @@ ginger$day <- wday(ginger$created_at, label = T,abbr = F)
 ginger$week <- week(ginger$created_at)
 ```
 
-```{r}
+```{r eval=FALSE}
 gingerSum <- ginger %>% group_by(year,month,day) %>% summarise(Tally=sum(quantity))
 
-```
-
-
-```{r}
-ggplot(gingerSum, aes(x=day, y= Tally)) +
-  geom_bar(stat = "identity")
 ```
 
 ```{r eval=FALSE}
@@ -110,14 +73,6 @@ gingerSum2 <- ginger %>% group_by(created_at) %>% summarise(Tally=sum(quantity))
 ```
 
 ```{r eval=FALSE}
-# graph not looking good
-# Where did i place gingerSum2?
-ginger$created_at <- as.Date(ginger$created_at)
-ggplot(ginger, aes(x=created_at, y= quantity)) +
-  geom_line()
-```
-
-```{r}
 # Set week2 to 0 so that i may counts the weeks properly starting 2010 as base
 ginger$week2 <- 0
 # Subset into yearly tables
@@ -130,10 +85,10 @@ ginger11$week2 <- ginger11$week +52
 ginger12$week2 <- ginger12$week + 52*2
 ```
 
-```{r}
+```{r eval=FALSE}
 # Collate the yearly tables
 gingerNew <- rbind(ginger10,ginger11,ginger12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(quantity))
-rm(ginger10,ginger11,ginger12)
+#rm(ginger10,ginger11,ginger12)
 ```
 Plot of sales by week.
 ```{r eval=FALSE}
@@ -146,9 +101,9 @@ ggplot(gingerNew, aes(x=week2,y=sales)) +
 Remove the outlier. The last data point. Or better perform outlier detection using more advanced methods.
 Google weekly time series.
 
-```{r}
+```{r eval=FALSE}
 gingerTs <- ts(data = gingerNew[,-1], start = c(2010,4), frequency = 52)
-#(gingerTs)
+(gingerTs)
 ```
 
 ```{r eval=FALSE}
@@ -156,12 +111,12 @@ gingerTs <- ts(data = gingerNew[,-1], start = c(2010,4), frequency = 52)
 ts(data = gingerNew, start = decimal_date(ymd("2010-04-30")), frequency = 52)
 ```
 
-```{r}
+```{r eval=FALSE}
 fit<- auto.arima(gingerTs)
 summary(fit)
 ```
 
-```{r}
+```{r eval=FALSE}
 fcast<-forecast(fit,h=20)
 summary(fcast)
 ```
@@ -173,30 +128,13 @@ Picking of pdq for a VARMA. Should it be the same for all the series? Can one ha
 With larger k is there a problem with over parameterization?  
 Plots may not be particularly innovative but for forecasting extra information may be contained in the pooled information leading to better forecasts.  
 
-## Next product is
-
-```{r passion}
-passionQuery <- mysqlconnection %>%  dbSendQuery("select * from cytonn.sales where product_id = 11")
-passion <- fetch(passionQuery, n=-1)
-dbClearResult(passionQuery)
-```
-
-```{r}
-passion$year <- (year(passion$created_at)) 
-#passion$year <- arrange(passion$year)
-passion$month <- month(passion$created_at, abbr = F,label = T)
-passion$day <- wday(passion$created_at, label = T,abbr = F)
-passion$week <- week(passion$created_at)
-```
 ### The Automation Process Begins!
 
-```{r}
+```{r Commodity_productID}
 # Create a function to automate getting the dataframes
 product_ids <- seq.int(from = 10, to = 25)
-#namesDF <- dbGetQuery(mysqlconnection,paste0("select distinct name from cytonn.combined order by combined.product_id") )
-#namesDF$name <- paste0("'",namesDF$name,"'")
 
-# Loop to get vales from the database
+# Loop to get vales from the database according to the product_id
 for (i in product_ids){
 assign(paste0("a",i), value = dbGetQuery(mysqlconnection, paste0("select * from cytonn.combined where product_id =",i) ))  
 }
@@ -213,21 +151,37 @@ get_SplitDates <- function(product) {
 ```
 
 
-```{r eval=FALSE}
+```{r Commodity_names, eval=FALSE}
+# dataframe of commodity_names
+namesDF <- dbGetQuery(mysqlconnection,paste0("select distinct name from cytonn.combined order by combined.product_id") )
+namesDF$nameSafe <- trimws(namesDF$name, which = c("both"))
+namesDF$nameSafe <- stringr::str_replace(namesDF$name," ","_")
+
+# loop to get values from the database according to name
 for (i in namesDF$name){
-assign(i, value = dbGetQuery(mysqlconnection, paste0("select * from cytonn.combined where combined.name =",i) ))  
+assign(paste0(trimws(stringr::str_replace(i," ","_")) ), 
+       value = dbGetQuery(mysqlconnection, paste0("select * from cytonn.combined where combined.name =","'",i,"'") ))  
+}
+
+```
+
+```{r loop splitdates_comName, eval=FALSE}
+for (i in namesDF$nameSafe ){
+  assign(paste0(i),
+         value = eval(parse(text = paste0("get_SplitDates(",i,")"))))
 }
 ```
 
-```{r}
-for (i in product_ids)
-  assign(paste0("a",i), value = get_SplitDates())
+```{r loop splitdates_prodID}
+for (i in product_ids){
+  assign(paste0("a",i), value = eval(parse(text = paste0("get_SplitDates(","a",i,")"))))
+}
 ```
 
 
 ```{r Fun get_weeks}
 get_weeks <- function(product) {
-  if (isTRUE( all.equal(unique(product$year), c(2010,2011,2012) ) )){
+  if (all(near(sort(unique(product$year)), c(2010,2011,2012) )) ){
     # Set week2 to 0 so that i may count the weeks properly starting 2010 as base
 product$week2 <- 0
 # Subset into yearly tables
@@ -238,22 +192,41 @@ product12 <- product[product$year==2012,]
 product10$week2 <- product10$week 
 product11$week2 <- product11$week +52
 product12$week2 <- product12$week + 52*2
+
 # collate into a single dataframe
-assign(paste0(product,"New"), value = rbind(ginger10,ginger11,ginger12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(quantity)) )
+return(product <-  rbind(product10,product11,product12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(values)) ) 
+# Below doesn't work
+#return(assign(paste0(deparse(substitute(product)),"new"), value = rbind(product10,product11,product12) %>% select(-week) %>% group_by(week2) %>%  summarise(sales = sum(values)) ) )
 # clean/declutter workspace
 rm(product10,product11,product12)
+
   } else{
-    return(print("Warning: Probably Has Less or More years than expected"))
+    warning("Warning: Probably Has Less or More years than expected")
+    invisible(product)
   }
 }
 
 ```
 
+```{r gettingWeeks_prodID}
+for (i in product_ids){
+  assign(paste0("a",i,"_wk"), value = eval( parse(text = paste0("get_weeks(","a",i,")") ) ) )
+}
+
+```
+
+```{r gettingweeks_comNames, eval=FALSE}
+for (i in namesDF$nameSafe){
+  assign(paste0(i,"_wk"), value = eval( parse(text = paste0("get_weeks(",i,")") ) ) )
+}
+```
+
+
 Before running below check that productNew exists
 
 ```{r ScatterPlots}
-plot_product <- function(productNew) {
-  ggplot(productNew, aes(x=week2,y=sales)) +
+plot_product <- function(product) {
+  ggplot(product, aes(x=week2,y=sales)) +
   geom_point() +
   labs(title = "Weekly Sales from April 2010 to 2011", x = "Week", y = "Sales") +
   scale_y_continuous(labels= comma) +
@@ -262,14 +235,85 @@ plot_product <- function(productNew) {
 
 ```
 
+```{r scatPlot_comName, eval=FALSE}
+for (i in namesDF$name){
+  assign(paste0("plot_",i),value = eval( parse(text = paste0("plot_product(",i,"_wk",")"))   ) )
+}
+```
+
+```{r loop_scatPlot_prodID}
+for (i in product_ids){
+  assign(paste0("plotSc_a",i), value = eval( parse(text = paste0("plot_product(","a",i,"_wk",")"))   )  )
+}
+```
+
+```{r actual_scatPlot_prodID, fig.height=30}
+# Arrange into grid
+grid.arrange(plotSc_a10,plotSc_a11,plotSc_a12,plotSc_a13,plotSc_a14,plotSc_a15,plotSc_a16,plotSc_a17,plotSc_a18,plotSc_a19,plotSc_a20,plotSc_a21,plotSc_a22,plotSc_a23,plotSc_a24,plotSc_a25,ncol=4 )
+```
 
 
+Remove outliers. Make forecasts.
+Remove week 122.
+
+```{r fun_makeTS}
+# function to make time series object
+make_timeSeries <- function(product) {
+  return(ts(data = product[1:length(product)-1], start = decimal_date(ymd("2010-04-30")), frequency = 52))
+}
+```
 
 
+```{r loop of makeTS}
+for (i in product_ids){
+  assign(paste0("a",i,"_ts"), value = eval(parse(text = paste0("make_timeSeries(","a",i,"_wk","$sales",")"))))
+}
+```
+
+```{r arima}
+for (i in product_ids){
+  assign(paste0("a",i,"_arima"), value = eval(parse(text = paste0("auto.arima(","a",i,"_ts",")") ) ) )
+}
+```
 
 
+```{r forecast_arima}
+# h step ahead forecast
+h <- 20
+for (i in product_ids){
+  assign(paste0("a",i,"fcast"),value = eval(parse(text = paste0("forecast(","a",i,"_arima",",h=",h,")") ) ) )
+}
+```
 
+```{r fcast_plot}
+#
+for (i in product_ids){
+  assign(paste0("a",i,"_df"), value = eval(parse(text = paste0("cbind(","a",i,"_ts",", ","a",i,"fcast$mean",")") ) ))
+  # assign appropriate column names. Not working
+  #assign(paste0("a",i,"_df"),value = eval(parse(text = paste0("colnames(a",i,"_df) <- c('Data','ARIMA')" ))) )
+  assign(paste0("plotFcast_","a",i), value = eval(parse(text = paste0("autoplot(a",i,"_df)" ))))
+}
 
+```
+
+```{r fig.height=30}
+grid.arrange(plotFcast_a10,plotFcast_a11,plotFcast_a12,plotFcast_a13,plotFcast_a14,plotFcast_a15,plotFcast_a16,plotFcast_a17,plotFcast_a18,plotFcast_a19,plotFcast_a20,plotFcast_a21,plotFcast_a22,plotFcast_a23,plotFcast_a24,plotFcast_a25, ncol=3)
+```
+
+Check forecast residuals for normality. Are they gaussian?
+Model/Forecast Evaluation
+Split data into training and test.
+Look at the MSE.
+
+The residuals from a10 look normal`r plot(a10fcast$residuals)`
+
+Note that as h (forecast horizon) tends to infinity or more generally to a large number. The forecast converges to the unconditional mean.  
+Is the seemingly flat forecast horizon due to the lack of trend and the general stationarity of the data?  
+Should i attempt to use stl and ets to produce forecasts?  
+Set lambda to zero? for the ARIMA and see what impact that has.  
+look [here](https://robjhyndman.com/hyndsight/overlappingpi/). The forecast in the link seems to resemble the one i have here. So i think its the lack of seasonality(which is a good thing) but otherwise the model(as seen from the fitted values) and forecast is okay.  
+Also see [here](https://robjhyndman.com/hyndsight/forecast7-part-2/)  
+Perhaps i should plot the fitted values as well just to show how the model performs.  
 
 
 
